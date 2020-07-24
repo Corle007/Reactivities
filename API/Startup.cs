@@ -2,6 +2,7 @@ using System.Text;
 using API.Middleware;
 using Application.Activities;
 using Application.interfaces;
+using AutoMapper;
 using Domain;
 using FluentValidation.AspNetCore;
 using Infrastructure.Security;
@@ -33,17 +34,20 @@ namespace API
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddDbContext<DataContext>(optionsAction=>
+            services.AddDbContext<DataContext>(optionsAction =>
             {
+                optionsAction.UseLazyLoadingProxies();
                 optionsAction.UseSqlite(Configuration.GetConnectionString("DefaultConnection"));
-            }); 
-            services.AddCors(opt => {
+            });
+            services.AddCors(opt =>
+            {
                 opt.AddPolicy("CorsPolicy", Policy =>
                 {
                     Policy.AllowAnyHeader().AllowAnyHeader().AllowAnyMethod().WithOrigins("http://localhost:3000");
                 });
             });
             services.AddMediatR(typeof(List.Handler).Assembly);
+            services.AddAutoMapper(typeof(List.Handler));
             services.AddControllers(opt =>
             {
                 var policy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
@@ -58,6 +62,15 @@ namespace API
             var identityBuilder = new IdentityBuilder(builder.UserType, builder.Services);
             identityBuilder.AddEntityFrameworkStores<DataContext>();
             identityBuilder.AddSignInManager<SignInManager<AppUser>>();
+
+            services.AddAuthorization(opt =>
+            {
+                opt.AddPolicy("IsActivityHost", policy =>
+                {
+                    policy.Requirements.Add(new IsHostRequirement());
+                });
+            });
+            services.AddTransient<IAuthorizationHandler, IsHostRequirementHandler>();
 
             services.AddScoped<IJwtGenerator, JwtGenerator>();
 
@@ -74,7 +87,7 @@ namespace API
                 };
             });
 
-            services.AddScoped<IUserAccesor, UserAccesor>(); 
+            services.AddScoped<IUserAccesor, UserAccesor>();
 
         }
 
@@ -84,7 +97,7 @@ namespace API
             app.UseMiddleware<ErrorHandlingMiddleware>();
             if (env.IsDevelopment())
             {
-               // app.UseDeveloperExceptionPage();
+                // app.UseDeveloperExceptionPage();
             }
 
             app.UseRouting();
@@ -93,7 +106,7 @@ namespace API
             app.UseAuthentication();
             app.UseAuthorization();
 
-            
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
